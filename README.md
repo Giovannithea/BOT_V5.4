@@ -1,1 +1,1 @@
-# BOT_V5.4
+Snipers follow price and have set exit price in % from launch. 
