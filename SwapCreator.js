@@ -1,5 +1,6 @@
-const { Connection, PublicKey } = require("@solana/web3.js");
+const { Connection, PublicKey, Keypair } = require("@solana/web3.js");
 const { MongoClient } = require("mongodb");
+const bs58 = require("bs58");
 require("dotenv").config();
 
 const connection = new Connection(process.env.SOLANA_WS_URL, "confirmed");
@@ -9,6 +10,25 @@ const TOKEN_PROGRAM_ID_STR = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"; // T
 const ASSOCIATED_TOKEN_PROGRAM_ID_STR = "ATokenGPv1sfdS5qUnx9GbS6hX1TTjR1L6rT3HaZJFA"; // Associated Token Program ID
 
 let db;
+let walletKeypair;
+
+function initializeWallet() {
+    try {
+        const secretKeyString = process.env.WALLET_PRIVATE_KEY; // Store your base58 private key in .env
+        if (!secretKeyString) {
+            throw new Error("WALLET_PRIVATE_KEY not found in environment variables");
+        }
+
+        walletKeypair = Keypair.fromSecretKey(
+            bs58.decode(secretKeyString)
+        );
+
+        console.log("Wallet initialized with public key:", walletKeypair.publicKey.toString());
+    } catch (error) {
+        console.error("Error initializing wallet:", error.message);
+        process.exit(1);
+    }
+}
 
 async function connectToDatabase() {
     const mongoUri = process.env.MONGO_URI;
@@ -20,6 +40,7 @@ async function connectToDatabase() {
         await client.connect();
         db = client.db("bot");
         console.log("Connected to MongoDB successfully.");
+        initializeWallet(); // Initialize wallet after DB connection
     } catch (error) {
         console.error("MongoDB connection failed:", error.message);
         process.exit(1);
@@ -109,12 +130,12 @@ async function processRaydiumLpTransaction(connection, signature) {
 
                 let tokenData = {
                     programId: new PublicKey(accounts[accountIndices[0]]).toString(), // Raydium AMM Program ID
-                    ammId: new PublicKey(poolId).toString(), // AMM Pool Account
+                    ammId: new PublicKey(poolId).toString(), // AMM Pool Account/ LP Account
                     ammAuthority: new PublicKey(ammAuthority).toString(), // AMM Authority Account
                     ammOpenOrders: new PublicKey(ammOpenOrder).toString(),
                     lpMint: new PublicKey(lpTokenMint).toString(), // LP Token Mint
-                    coinMint: new PublicKey(mint0).toString(), // Base Token Mint
-                    pcMint: new PublicKey(mint1).toString(), // Quote Token Mint
+                    coinMint: new PublicKey(mint0).toString(), // Base Token Mint, Other
+                    pcMint: new PublicKey(mint1).toString(), // Quote Token Mint, SOL
                     coinVault: new PublicKey(baseVault).toString(), // Base Token Vault
                     pcVault: new PublicKey(quoteVault).toString(), // Quote Token Vault
                     ammTargetOrders: new PublicKey(ammTarget).toString(),
@@ -142,4 +163,5 @@ async function processRaydiumLpTransaction(connection, signature) {
 module.exports = {
     connectToDatabase,
     processRaydiumLpTransaction,
+    walletKeypair,
 };
