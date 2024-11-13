@@ -1,166 +1,145 @@
-const { Connection, PublicKey, Keypair, Transaction, SystemProgram } = require('@solana/web3.js');
-const { getAssociatedTokenAddress, createAssociatedTokenAccountInstruction } = require('@solana/spl-token');
-const { MongoClient } = require('mongodb');
-const bs58 = require('bs58');
-require('dotenv').config();
+const { Connection, PublicKey } = require("@solana/web3.js");
+const { MongoClient } = require("mongodb");
+require("dotenv").config();
 
-// Environment variables
-const SOLANA_WS_URL = process.env.SOLANA_WS_URL;
-const RAYDIUM_AMM_PROGRAM_ID = process.env.RAYDIUM_AMM_PROGRAM_ID;
-const MONGO_URI = process.env.MONGO_URI;
-const USER_VAULTS = process.env.USER_VAULTS;
+const connection = new Connection(process.env.SOLANA_WS_URL, "confirmed");
+const RAYDIUM_AMM_PROGRAM_ID = new PublicKey(process.env.RAYDIUM_AMM_PROGRAM_ID);
+const SYSTEM_PROGRAM_ID = "11111111111111111111111111111111"; // Solana System Program ID
+const TOKEN_PROGRAM_ID_STR = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"; // Token Program ID
+const ASSOCIATED_TOKEN_PROGRAM_ID_STR = "ATokenGPv1sfdS5qUnx9GbS6hX1TTjR1L6rT3HaZJFA"; // Associated Token Program ID
 
-// Initialize Solana connection
-const connection = new Connection(SOLANA_WS_URL);
+let db;
 
-// Load wallet
-const secretKey = Uint8Array.from([/* your wallet secret key array here */]);
-const payer = Keypair.fromSecretKey(secretKey);
-
-// Function to find program addresses
-async function findProgramAddress(seeds, programId) {
-    const [publicKey, nonce] = await PublicKey.findProgramAddress(seeds, programId);
-    return { publicKey, nonce };
-}
-
-// Connect to MongoDB and fetch the account data
-async function fetchAccountData() {
-    const client = new MongoClient(MONGO_URI);
-    await client.connect();
-    const db = client.db('Test1');
-    const collection = db.collection('bot.raydium_lp_transactions');
-    const accountData = await collection.findOne({ identifier: 'unique_swap_identifier' });
-    await client.close();
-    return accountData;
-}
-
-// Function to create the swap instruction
-function createSwapInstruction({
-                                   programId,
-                                   ammId,
-                                   ammAuthority,
-                                   ammOpenOrders,
-                                   lpMint,
-                                   coinMint,
-                                   pcMint,
-                                   coinVault,
-                                   pcVault,
-                                   withdrawQueue,
-                                   ammTargetOrders,
-                                   poolTempLp,
-                                   marketProgramId,
-                                   marketId,
-                                   userWallet,
-                                   userCoinVault,
-                                   userPcVault,
-                                   userLpVault,
-                                   ammConfigId,
-                                   feeDestinationId,
-                                   fromMint,
-                                   toMint,
-                                   inputAmount,
-                                   targetAccount
-                               }) {
-    const keys = [
-        { pubkey: ammId, isSigner: false, isWritable: true },
-        { pubkey: ammAuthority, isSigner: false, isWritable: false },
-        { pubkey: ammOpenOrders, isSigner: false, isWritable: true },
-        { pubkey: lpMint, isSigner: false, isWritable: true },
-        { pubkey: coinMint, isSigner: false, isWritable: false },
-        { pubkey: pcMint, isSigner: false, isWritable: false },
-        { pubkey: coinVault, isSigner: false, isWritable: true },
-        { pubkey: pcVault, isSigner: false, isWritable: true },
-        { pubkey: withdrawQueue, isSigner: false, isWritable: true },
-        { pubkey: ammTargetOrders, isSigner: false, isWritable: true },
-        { pubkey: poolTempLp, isSigner: false, isWritable: true },
-        { pubkey: marketProgramId, isSigner: false, isWritable: false },
-        { pubkey: marketId, isSigner: false, isWritable: true },
-        { pubkey: userWallet, isSigner: true, isWritable: true },
-        { pubkey: userCoinVault, isSigner: false, isWritable: true },
-        { pubkey: userPcVault, isSigner: false, isWritable: true },
-        { pubkey: userLpVault, isSigner: false, isWritable: true },
-        { pubkey: ammConfigId, isSigner: false, isWritable: false },
-        { pubkey: feeDestinationId, isSigner: false, isWritable: true },
-        { pubkey: SystemProgram.programId, isSigner: false, isWritable: false }
-    ];
-
-    // Data for the swap instruction
-    const data = Buffer.from([]); // Replace with the actual instruction data
-
-    return { keys, programId, data };
-}
-
-// Main function to create and add the swap instruction
-async function createSwapTransaction() {
-    const accountData = await fetchAccountData();
-
-    const programId = new PublicKey(accountData.programId);
-    const ammId = new PublicKey(accountData.ammId);
-    const ammAuthority = new PublicKey(accountData.ammAuthority);
-    const ammOpenOrders = new PublicKey(accountData.ammOpenOrders);
-    const lpMint = new PublicKey(accountData.lpMint);
-    const coinMint = new PublicKey(accountData.coinMint);
-    const pcMint = new PublicKey(accountData.pcMint);
-    const coinVault = new PublicKey(accountData.coinVault);
-    const pcVault = new PublicKey(accountData.pcVault);
-    const withdrawQueue = new PublicKey(accountData.withdrawQueue);
-    const ammTargetOrders = new PublicKey(accountData.ammTargetOrders);
-    const poolTempLp = new PublicKey(accountData.poolTempLp);
-    const marketProgramId = new PublicKey(accountData.marketProgramId);
-    const marketId = new PublicKey(accountData.marketId);
-    const userWallet = new PublicKey(accountData.userWallet);
-    const userCoinVault = new PublicKey(accountData.userCoinVault);
-    const userPcVault = new PublicKey(accountData.userPcVault);
-    const userLpVault = new PublicKey(accountData.userLpVault);
-    const ammConfigId = new PublicKey(accountData.ammConfigId);
-    const feeDestinationId = new PublicKey(accountData.feeDestinationId);
-
-    const fromMint = new PublicKey(accountData.fromMint);
-    const toMint = new PublicKey(accountData.toMint);
-    const inputAmount = accountData.inputAmount;
-    const targetAccount = new PublicKey(accountData.targetAccount);
-
-    const userFromTokenAddress = await getAssociatedTokenAddress(fromMint, payer.publicKey);
-    const userToTokenAddress = await getAssociatedTokenAddress(toMint, targetAccount);
-
-    // Create the transaction
-    const transaction = new Transaction();
-
-    // Add instruction to create associated token account if needed
-    transaction.add(createAssociatedTokenAccountInstruction(payer.publicKey, userToTokenAddress, targetAccount, toMint));
-
-    // Add the swap instruction
-    const swapInstruction = createSwapInstruction({
-        programId,
-        ammId,
-        ammAuthority,
-        ammOpenOrders,
-        lpMint,
-        coinMint,
-        pcMint,
-        coinVault,
-        pcVault,
-        withdrawQueue,
-        ammTargetOrders,
-        poolTempLp,
-        marketProgramId,
-        marketId,
-        userWallet,
-        userCoinVault,
-        userPcVault,
-        userLpVault,
-        ammConfigId,
-        feeDestinationId,
-        fromMint,
-        toMint,
-        inputAmount,
-        targetAccount
+async function connectToDatabase() {
+    const mongoUri = process.env.MONGO_URI;
+    const client = new MongoClient(mongoUri, {
+        useNewUrlParser: true,
+        useUnifiedTopology: true,
     });
-    transaction.add(swapInstruction);
-
-    // Sign and send the transaction
-    const signature = await connection.sendTransaction(transaction, [payer], { skipPreflight: false, preflightCommitment: 'singleGossip' });
-    console.log("Transaction signature:", signature);
+    try {
+        await client.connect();
+        db = client.db("bot");
+        console.log("Connected to MongoDB successfully.");
+    } catch (error) {
+        console.error("MongoDB connection failed:", error.message);
+        process.exit(1);
+    }
 }
 
-createSwapTransaction().catch(console.error);
+async function saveToMongo(tokenData) {
+    try {
+        if (!db) {
+            throw new Error("Database connection is not initialized");
+        }
+        const collection = db.collection("raydium_lp_transactions");
+        const result = await collection.insertOne(tokenData);
+
+        if (result.acknowledged) {
+            console.log("Token data saved to MongoDB:", result.insertedId);
+        } else {
+            console.error("Failed to save token data to MongoDB.");
+        }
+    } catch (error) {
+        console.error("Error saving token data to MongoDB:", error.message);
+    }
+}
+
+function invertCoinAndPcMint(tokenData) {
+    const SPECIAL_COIN_MINT = "So11111111111111111111111111111111111111112";
+    if (tokenData.coinMint === SPECIAL_COIN_MINT) {
+        [tokenData.coinMint, tokenData.pcMint] = [tokenData.pcMint, tokenData.coinMint];
+    }
+    return tokenData;
+}
+
+async function processRaydiumLpTransaction(connection, signature) {
+    try {
+        // Fetch the transaction details with new version handling
+        const transactionDetails = await connection.getTransaction(signature, {
+            commitment: "confirmed",
+            maxSupportedTransactionVersion: 0,
+        });
+
+        if (!transactionDetails) {
+            console.error("No transaction details found for signature:", signature);
+            return;
+        }
+
+        // Updated way to access transaction data
+        const message = transactionDetails.transaction.message;
+
+        // For newer versions of Solana
+        const accounts = message.staticAccountKeys
+            ? message.staticAccountKeys.map((key) => key.toString())
+            : message.accountKeys.map((key) => key.toString());
+
+        const instructions = message.compiledInstructions || message.instructions;
+
+        if (!instructions) {
+            console.error("No instructions found in transaction");
+            return;
+        }
+
+        console.log("Transaction Message:", message);
+        console.log("Accounts:", accounts);
+
+        // Process each instruction
+        for (const ix of instructions) {
+            const programId = accounts[ix.programIdIndex];
+
+            if (programId === RAYDIUM_AMM_PROGRAM_ID.toString() && ix.data.length > 0) {
+                // Extract account indices (adjusted for possible different structure)
+                const accountIndices = ix.accounts || ix.accountKeyIndexes;
+
+                if (!accountIndices) {
+                    console.error("No account indices found in instruction");
+                    continue;
+                }
+
+                const mint0 = accounts[accountIndices[8]]; // Base token mint
+                const mint1 = accounts[accountIndices[9]]; // Quote token mint
+                const lpTokenMint = accounts[accountIndices[7]]; // LP token mint
+                const deployer = accounts[accountIndices[17]]; // Deployer's address
+                const poolId = accounts[accountIndices[4]]; // AMM pool ID
+                const baseVault = accounts[accountIndices[10]]; // Base token vault
+                const quoteVault = accounts[accountIndices[11]]; // Quote token vault
+                const ammAuthority = accounts[accountIndices[5]]; // AMM authority
+                const ammTarget = accounts[accountIndices[13]]; // AMM target orders
+                const ammOpenOrder = accounts[accountIndices[6]]; // AMM open orders
+
+                let tokenData = {
+                    programId: new PublicKey(accounts[accountIndices[0]]).toString(), // Raydium AMM Program ID
+                    ammId: new PublicKey(poolId).toString(), // AMM Pool Account
+                    ammAuthority: new PublicKey(ammAuthority).toString(), // AMM Authority Account
+                    ammOpenOrders: new PublicKey(ammOpenOrder).toString(),
+                    lpMint: new PublicKey(lpTokenMint).toString(), // LP Token Mint
+                    coinMint: new PublicKey(mint0).toString(), // Base Token Mint
+                    pcMint: new PublicKey(mint1).toString(), // Quote Token Mint
+                    coinVault: new PublicKey(baseVault).toString(), // Base Token Vault
+                    pcVault: new PublicKey(quoteVault).toString(), // Quote Token Vault
+                    ammTargetOrders: new PublicKey(ammTarget).toString(),
+                    deployer: new PublicKey(deployer).toString(), // Deployer's Address
+                    systemProgramId: SYSTEM_PROGRAM_ID, // System Program ID
+                    tokenProgramId: TOKEN_PROGRAM_ID_STR, // Token Program ID
+                    associatedTokenProgramId: ASSOCIATED_TOKEN_PROGRAM_ID_STR, // Associated Token Program ID
+                };
+
+                tokenData = invertCoinAndPcMint(tokenData);
+
+                await saveToMongo(tokenData);
+                return tokenData;
+            }
+        }
+    } catch (error) {
+        if (error.message.includes("Cannot read properties of undefined (reading '_bn')")) {
+            console.log("Encountered '_bn' error, ignoring transaction:", signature);
+        } else {
+            console.error("Error fetching/processing transaction:", error.message);
+        }
+    }
+}
+
+module.exports = {
+    connectToDatabase,
+    processRaydiumLpTransaction,
+};
